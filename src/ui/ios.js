@@ -130,10 +130,10 @@ const AVATAR_ACTIVITIES = ['idle', 'thinking', 'searching', 'computer', 'plannin
 
 /** Thought-bubble prop (thinking): bubble pulses, its three dots light up in sequence. */
 function ThoughtBubbleProp({ size, pulse }) {
-  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.06] });
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.1] });
   const dot = (range) => pulse.interpolate({ inputRange: [0, 1], outputRange: range });
   return (
-    <Animated.View pointerEvents="none" style={{ position: 'absolute', top: -size * 0.10, right: -size * 0.38, width: size * 0.66, height: size * 0.5, transform: [{ scale }] }}>
+    <Animated.View pointerEvents="none" style={{ position: 'absolute', top: -size * 0.16, right: -size * 0.46, width: size * 0.78, height: size * 0.58, transform: [{ scale }] }}>
       <Svg width="100%" height="100%" viewBox="0 0 52 40">
         <Circle cx="8" cy="33" r="3" fill="#FFFFFF" stroke="#D1D1D6" strokeWidth="1" />
         <Circle cx="16" cy="25" r="4.5" fill="#FFFFFF" stroke="#D1D1D6" strokeWidth="1" />
@@ -158,10 +158,10 @@ function ThoughtBubbleProp({ size, pulse }) {
 
 /** Magnifying-glass prop (searching/browsing): sweeps side to side, scanning. */
 function MagnifierProp({ size, sweep }) {
-  const translateX = sweep.interpolate({ inputRange: [0, 1], outputRange: [-size * 0.16, size * 0.16] });
-  const rotate = sweep.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['-8deg', '0deg', '8deg'] });
+  const translateX = sweep.interpolate({ inputRange: [0, 1], outputRange: [-size * 0.22, size * 0.22] });
+  const rotate = sweep.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['-10deg', '0deg', '10deg'] });
   return (
-    <Animated.View pointerEvents="none" style={{ position: 'absolute', bottom: size * 0.04, right: -size * 0.26, width: size * 0.54, height: size * 0.54, transform: [{ translateX }, { rotate }] }}>
+    <Animated.View pointerEvents="none" style={{ position: 'absolute', bottom: size * 0.02, right: -size * 0.30, width: size * 0.64, height: size * 0.64, transform: [{ translateX }, { rotate }] }}>
       <Svg width="100%" height="100%" viewBox="0 0 40 40">
         <Circle cx="16" cy="16" r="10.5" fill="rgba(255,255,255,0.28)" stroke="#3A3A3C" strokeWidth="3.5" />
         <Path d="M24 24 L34.5 34.5" stroke="#3A3A3C" strokeWidth="5" strokeLinecap="round" />
@@ -174,11 +174,11 @@ function MagnifierProp({ size, sweep }) {
 function LaptopProp({ size, tap }) {
   const paw = (downFirst) => tap.interpolate({
     inputRange: [0, 0.5, 1],
-    outputRange: downFirst ? [2.5, 0, 2.5] : [0, 2.5, 0],
+    outputRange: downFirst ? [4.5, 0, 4.5] : [0, 4.5, 0],
   });
-  const pawSize = Math.max(5, size * 0.13);
+  const pawSize = Math.max(6, size * 0.16);
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', bottom: -size * 0.05, left: size * 0.14, width: size * 0.72, height: size * 0.5 }}>
+    <View pointerEvents="none" style={{ position: 'absolute', bottom: -size * 0.06, left: size * 0.08, width: size * 0.84, height: size * 0.56 }}>
       <Svg width="100%" height="100%" viewBox="0 0 52 36">
         <Rect x="9" y="2" width="34" height="25" rx="3" fill="#2C2C2E" stroke="#636366" strokeWidth="1" />
         <Rect x="12" y="5" width="28" height="19" rx="1.5" fill="#4FA3FF" opacity="0.9" />
@@ -199,7 +199,7 @@ function PlanningProp({ size, orbit, pulse }) {
   const sparkleOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] });
   return (
     <>
-      <View pointerEvents="none" style={{ position: 'absolute', bottom: -size * 0.02, right: -size * 0.33, width: size * 0.46, height: size * 0.58 }}>
+      <View pointerEvents="none" style={{ position: 'absolute', bottom: -size * 0.03, right: -size * 0.38, width: size * 0.54, height: size * 0.66 }}>
         <Svg width="100%" height="100%" viewBox="0 0 36 46">
           <Rect x="4" y="5" width="28" height="38" rx="4" fill="#FFFFFF" stroke="#D1D1D6" strokeWidth="1.5" />
           <Rect x="12" y="1.5" width="12" height="7" rx="3" fill="#8E8E93" />
@@ -226,11 +226,11 @@ function PlanningProp({ size, orbit, pulse }) {
 
 /** Pencil prop (writing): tilted pencil gliding back and forth as if writing a line. */
 function PencilProp({ size, write }) {
-  const translateX = write.interpolate({ inputRange: [0, 1], outputRange: [-size * 0.07, size * 0.13] });
-  const translateY = write.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, size * 0.035, 0] });
-  const rotate = write.interpolate({ inputRange: [0, 1], outputRange: ['-4deg', '5deg'] });
+  const translateX = write.interpolate({ inputRange: [0, 1], outputRange: [-size * 0.10, size * 0.18] });
+  const translateY = write.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, size * 0.05, 0] });
+  const rotate = write.interpolate({ inputRange: [0, 1], outputRange: ['-6deg', '7deg'] });
   return (
-    <Animated.View pointerEvents="none" style={{ position: 'absolute', bottom: size * 0.01, right: -size * 0.24, width: size * 0.52, height: size * 0.52, transform: [{ translateX }, { translateY }, { rotate }] }}>
+    <Animated.View pointerEvents="none" style={{ position: 'absolute', bottom: size * 0.0, right: -size * 0.28, width: size * 0.62, height: size * 0.62, transform: [{ translateX }, { translateY }, { rotate }] }}>
       <Svg width="100%" height="100%" viewBox="0 0 40 40">
         <Path d="M27.5 4.5 L35.5 12.5 L15 33 L5.5 35.5 L8 26 Z" fill="#FFCC00" stroke="#B8860B" strokeWidth="1" />
         <Path d="M24.5 7.5 L32.5 15.5 L29.5 18.5 L21.5 10.5 Z" fill="#FFD60A" />
@@ -255,7 +255,11 @@ function PencilProp({ size, write }) {
  *   planning  clipboard/checklist + orbiting sparkles, slow nod
  *   writing   pencil gliding in a writing motion
  * Unknown kinds fall back to idle. All loops run on the native driver
- * and are stopped on kind change / unmount.
+ * and are stopped on kind change / unmount. Every kind change also
+ * fires a spring "pop" so transitions are visible at a glance, and
+ * all motion amplitudes are sized to actually read on a phone screen
+ * (the first pass's ~2px motions looked static on a real device -
+ * owner feedback, 2026-11-04).
  */
 export function ZaoAvatar({ size = 40, style, activity = 'idle' }) {
   const kind = AVATAR_ACTIVITIES.includes(activity) ? activity : 'idle';
@@ -264,8 +268,16 @@ export function ZaoAvatar({ size = 40, style, activity = 'idle' }) {
   const pulse = useRef(new Animated.Value(0)).current;
   const tap = useRef(new Animated.Value(0)).current;
   const orbit = useRef(new Animated.Value(0)).current;
+  // Transition pop: every time the activity CHANGES, the avatar springs
+  // in with a visible scale pop so a state change is unmissable at a
+  // glance (Muse's avatar visibly reacts when its task changes; a
+  // subtle loop alone read as "static" on a real phone).
+  const pop = useRef(new Animated.Value(0.8)).current;
 
   useEffect(() => {
+    pop.setValue(0.8);
+    const popAnim = Animated.spring(pop, { toValue: 1, friction: 5, tension: 130, useNativeDriver: true });
+    popAnim.start();
     const values = [breathe, sway, pulse, tap, orbit];
     values.forEach((v) => { v.stopAnimation(); v.setValue(0); });
     const ease = Easing.inOut(Easing.sin);
@@ -292,18 +304,21 @@ export function ZaoAvatar({ size = 40, style, activity = 'idle' }) {
     }
     if (kind === 'writing') start(sway, 950);
 
-    return () => { loops.forEach((a) => a.stop()); values.forEach((v) => v.stopAnimation()); };
-  }, [kind, breathe, sway, pulse, tap, orbit]);
+    return () => { popAnim.stop(); loops.forEach((a) => a.stop()); values.forEach((v) => v.stopAnimation()); };
+  }, [kind, breathe, sway, pulse, tap, orbit, pop]);
 
+  // Motion amplitudes are deliberately LARGE (several px at header
+  // size, ~4% scale): the first pass used ~2px / 1.2% motions that
+  // read as a still photo on a real device - the owner called it out.
   const bobY = kind === 'computer'
-    ? tap.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -size * 0.022, 0] })
-    : breathe.interpolate({ inputRange: [0, 1], outputRange: [0, kind === 'planning' ? size * 0.045 : -size * 0.03] });
+    ? tap.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -size * 0.05, 0] })
+    : breathe.interpolate({ inputRange: [0, 1], outputRange: [0, kind === 'planning' ? size * 0.06 : -size * 0.05] });
   const breatheScale = kind === 'computer'
     ? 1
-    : breathe.interpolate({ inputRange: [0, 1], outputRange: [1, kind === 'idle' ? 1.025 : 1.012] });
+    : breathe.interpolate({ inputRange: [0, 1], outputRange: [1, kind === 'idle' ? 1.045 : 1.02] });
 
   return (
-    <View style={[{ width: size, height: size }, style]}>
+    <Animated.View style={[{ width: size, height: size, transform: [{ scale: pop }] }, style]}>
       <Animated.View style={{ width: size, height: size, transform: [{ translateY: bobY }, { scale: breatheScale }] }}>
         <Image
           source={AVATAR_ART}
@@ -316,7 +331,7 @@ export function ZaoAvatar({ size = 40, style, activity = 'idle' }) {
       {kind === 'computer' && <LaptopProp size={size} tap={tap} />}
       {kind === 'planning' && <PlanningProp size={size} orbit={orbit} pulse={pulse} />}
       {kind === 'writing' && <PencilProp size={size} write={sway} />}
-    </View>
+    </Animated.View>
   );
 }
 
