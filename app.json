@@ -1,0 +1,112 @@
+{
+  "expo": {
+    "name": "ZAO",
+    "slug": "ZAO",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "associatedDomains": [],
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "ZAO needs the microphone so you can dictate messages into the composer.",
+        "NSSpeechRecognitionUsageDescription": "ZAO uses on-device speech recognition to turn your voice into text in the composer."
+      }
+    },
+    "android": {
+      "package": "com.zenas.zao",
+      "softwareKeyboardLayoutMode": "pan",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES",
+        "RECORD_AUDIO"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "zao",
+              "host": "plugin",
+              "pathPrefix": "/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-secure-store",
+      "expo-background-task",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#1F2937"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ZAO needs access to your photos so you can attach images to chat.",
+          "cameraPermission": "ZAO needs camera access so you can take a photo to attach to your chat."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "ZAO needs access to your photos to save images from chat.",
+          "savePhotosPermission": "ZAO needs permission to save images from chat to your photos.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      "./plugins/withCleartextTraffic",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "ZAO uses Face ID to unlock your Vault and reveal secrets."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "ZAO needs camera access to scan authenticator QR codes.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "ZAO needs the microphone so you can dictate messages into the composer.",
+          "speechRecognitionPermission": "ZAO uses on-device speech recognition to turn your voice into text in the composer.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ]
+    ],
+    "extra": {
+      "githubOAuthClientId": ""
+    },
+    "scheme": "zao"
+  }
+}

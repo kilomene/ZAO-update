@@ -1,0 +1,510 @@
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, StyleSheet, StatusBar, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+import * as Linking from 'expo-linking';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import ErrorBoundary from './src/components/ErrorBoundary';
+import ChatScreen from './src/screens/ChatScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
+import PlanScreen from './src/screens/PlanScreen';
+import BrowserFullscreen from './src/components/BrowserFullscreen';
+import { BrowserAgentStream } from './src/services/browserAgent/browserAgentStream';
+import { attachBrowserCardStream } from './src/store/browserCardStore';
+import SidebarDrawer from './src/components/SidebarDrawer';
+import { initDatabase } from './src/db/database';
+import { registerBackgroundPlanTask } from './src/services/background/backgroundPlanTask';
+import { registerProcessWatcherTask, startForegroundProcessWatch } from './src/services/background/processWatcherTask';
+import { initReminderListeners, reconcileReminders } from './src/services/reminders/reminderService';
+import { runSessionStartHooks } from './src/services/execution/hooksEngine';
+import { useChatStore } from './src/store/chatStore';
+import { usePreferencesStore } from './src/store/preferencesStore';
+import { usePlanStore } from './src/store/planStore';
+import { useThemeStore } from './src/store/themeStore';
+import { AmbientBackground } from './src/ui/ios';
+import { useTheme, useResolvedThemeMode } from './src/theme/useTheme';
+import { SharedPluginInstallSheet } from './src/components/settings/SharedPluginInstallSheet';
+
+import { MAX_FONT_SIZE_MULTIPLIER } from './src/theme/tokens';
+if (Text.defaultProps == null) Text.defaultProps = {};
+Text.defaultProps.maxFontSizeMultiplier = MAX_FONT_SIZE_MULTIPLIER;
+
+function AppShell() {
+  const theme = useTheme();
+  const resolvedMode = useResolvedThemeMode();
+  const [dbReady, setDbReady] = useState(false);
+  const [dbError, setDbError] = useState(null);
+  const [screen, setScreen] = useState('chat'); // 'chat' | 'settings' | 'browser' | 'plan'
+  const [pendingShareToken, setPendingShareToken] = useState(null);
+
+  // Deep links: zao://plugin/<token> and https://<host>/p/<token>
+  useEffect(() => {
+    const parse = (url) => {
+      if (!url) return null;
+      try {
+        const parsed = Linking.parse(url);
+        const path = `${parsed.path || ''}`.replace(/^\/+/, '');
+        if (parsed.scheme === 'zao' && (parsed.hostname === 'plugin' || path.startsWith('plugin/'))) {
+          const token = parsed.hostname === 'plugin'
+            ? (path || parsed.queryParams?.token || '')
+            : path.replace(/^plugin\//, '');
+          return token || null;
+        }
+        if (path.startsWith('p/')) return path.slice(2).split('/')[0] || null;
+        if (parsed.path && String(parsed.path).includes('/p/')) {
+          const i = String(parsed.path).indexOf('/p/');
+          return String(parsed.path).slice(i + 3).split('/')[0] || null;
+        }
+      } catch (_) { /* ignore */ }
+      // Fallback regex
+      const m = String(url).match(/(?:zao:\/\/plugin\/|\/p\/)([A-Za-z0-9_\-]+)/);
+      return m ? m[1] : null;
+    };
+    const handle = ({ url }) => {
+      const token = parse(url);
+      if (token) setPendingShareToken(token);
+    };
+    Linking.getInitialURL().then((url) => {
+      const token = parse(url);
+      if (token) setPendingShareToken(token);
+    }).catch(() => {});
+    const sub = Linking.addEventListener('url', handle);
+    return () => sub?.remove?.();
+  }, []);
+
+  const [sidebarVisible, setSidebarVisible] = useState(false);
+  const [isAgentRunning, setIsAgentRunning] = useState(false);
+  // Which plan PlanScreen.js is currently showing - set when a chat reply
+  // carries a plan_id (see ChatScreen.js's "View Plan" chip) or when a
+  // resumable plan from a previous session is opened.
+  const [activePlanId, setActivePlanId] = useState(null);
+
+  const {
+    conversationId, conversations,
+    loadConversationList, loadConversation, startNewConversation, deleteConversation,
+    setAgentSession,
+  } = useChatStore();
+  const { loadThemePreference } = useThemeStore();
+  const { preferences, loadPreferences } = usePreferencesStore();
+  const {
+    approveStep: approvePlanStep, rejectStep: rejectPlanStep,
+    acceptCheckpoint: acceptPlanCheckpoint, dismissCheckpoint: dismissPlanCheckpoint,
+    startPlan: startPlanAction,
+    resumablePlans, autoResumingPlanIds, loadActivePlansOnLaunch, dismissResumablePlan,
+  } = usePlanStore();
+
+  // One BrowserAgentStream connection for the whole app lifetime - talks
+  // to the Playwright agent running on the person's PC (see
+  // server/browserAgent.js, server/browserStream.js) over a WebSocket.
+  // The phone itself no longer runs a browser or a decision loop; this is
+  // purely a live connection + display, which is what makes "give it a
+  // task, then give it a follow-up in the same conversation" work - the
+  // PC-side session's page/history state persists across separate tasks
+  // the whole time this connection stays open, same continuity guarantee
+  // the old on-device AgentSession gave, just held on the PC instead of
+  // in this phone's memory.
+  const streamRef = useRef(null);
+  if (!streamRef.current) {
+    streamRef.current = new BrowserAgentStream();
+  }
+  const [frameBase64, setFrameBase64] = useState(null);
+  const [awaitingHuman, setAwaitingHuman] = useState(false);
+  const [humanReason, setHumanReason] = useState(null);
+  const [browserTabs, setBrowserTabs] = useState([]); // [{tabId, url, title, active}] - kept in sync from 'status' messages; feeds BrowserFullscreen's site pill (shows the active tab's real URL)
+  // Display-side zoom of the streamed frame in BrowserFullscreen.
+  const browserFullScreenZoom = 1;
+  const [streamConnected, setStreamConnected] = useState(false);
+  const [streamConnectionError, setStreamConnectionError] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const result = await initDatabase();
+      if (result.success) {
+        setDbReady(true);
+      } else {
+        // Even if DB init fails, let the user into the app - individual
+        // screens handle missing-DB gracefully rather than blocking entirely.
+        console.error('[App] DB init failed:', result.error);
+        setDbError(result.error);
+        setDbReady(true);
+      }
+      await loadThemePreference();
+      await loadPreferences();
+      await loadConversationList();
+      // Surfaces any plan left running/paused/awaiting-approval when the
+      // app was last closed (src/store/planStore.js's
+      // loadActivePlansOnLaunch) - previously tracked correctly in SQLite
+      // but never checked, so an interrupted plan just silently vanished
+      // from view. Renders as the resume banner below, above ChatScreen.
+      await loadActivePlansOnLaunch();
+      // Real background continuation for a plan that was still 'running'
+      // when the app last closed (see backgroundPlanTask.js's header for
+      // exactly what this can and can't guarantee) - registration is
+      // idempotent and safe to call on every launch.
+      registerBackgroundPlanTask();
+      // "Task finished" notifications for pc_process_start-launched
+      // background processes (dev servers, long builds) - see
+      // processWatcherTask.js's header for exactly what the OS-level
+      // background task can and can't guarantee; startForegroundProcessWatch
+      // covers the same ground with a near-instant poll while the app is
+      // actually open.
+      registerProcessWatcherTask();
+      startForegroundProcessWatch();
+      // Prospective memory (src/services/reminders/reminderService.js) -
+      // wire the notification handler/listeners up first, then sweep any
+      // reminder that was due while the app was closed (or whose OS-level
+      // schedule silently never fired) so ZAO's own record never says
+      // "scheduled" for something that has already come and gone.
+      initReminderListeners();
+      reconcileReminders().catch((err) => console.error('[App] reconcileReminders failed:', err));
+      // SessionStart hooks (src/services/execution/hooksEngine.js) - runs
+      // once per app launch, after the DB (and therefore any registered
+      // hooks) is actually readable. Fire-and-forget: a SessionStart hook
+      // failing shouldn't block the person from getting into the app.
+      runSessionStartHooks().catch((err) => console.error('[App] SessionStart hooks failed:', err));
+    })();
+  }, []);
+
+  // Connects the BrowserAgentStream once, at launch, and keeps it
+  // connected for the whole app lifetime - registers it into chatStore
+  // so sendMessage/editMessage/regenerateMessage can all pass the same
+  // connection into the orchestrator (see chatStore.js's
+  // setAgentSession). Live frame/status events update local state here
+  // so BrowserFullscreen re-renders with the latest
+  // stream. browserAgentStream.js's own reconnect-on-close handling
+  // covers network blips and PC backend restarts.
+  //
+  // DELIBERATELY NOT gated behind preferences.browser_access_enabled:
+  // that preference defaults to false for every install, and
+  // orchestrator.js's runBrowsingHandler only flips it to true the
+  // first time a browsing-classified message actually finds a live
+  // agentSession to use - which never happens if connecting the session
+  // in the first place is ALSO waiting on that same preference already
+  // being true. That was a real chicken-and-egg deadlock: nothing could
+  // ever set the flag, because nothing would connect until the flag was
+  // already set. Connecting unconditionally here is what actually makes
+  // orchestrator.js's "the request itself is the consent" design work -
+  // the preference is purely a synced-after-the-fact display value now,
+  // never a precondition for the connection existing.
+  useEffect(() => {
+    const stream = streamRef.current;
+    setAgentSession(stream);
+    stream.connect();
+
+    const offStatus = stream.on('status', (s) => {
+      setIsAgentRunning(s.running);
+      setAwaitingHuman(s.awaitingHuman);
+      setHumanReason(s.reason);
+      setBrowserTabs(s.tabs || []);
+    });
+    const offFrame = stream.on('frame', (data) => setFrameBase64(data));
+    // Inline chat Browser Card: anchored to the latest message of the
+    // current conversation at the moment a task starts.
+    const offCards = attachBrowserCardStream(stream, () => {
+      const chat = useChatStore.getState();
+      const msgs = chat.messages || [];
+      return { conversationId: chat.conversationId, anchorMessageId: msgs.length ? msgs[msgs.length - 1].id : null };
+    });
+    const offConnection = stream.on('connectionChange', ({ connected, error }) => {
+      setStreamConnected(connected);
+      setStreamConnectionError(error || null);
+      if (!connected) setFrameBase64(null); // stale frame would look "live" even though the session behind it is gone
+    });
+
+    return () => {
+      offStatus();
+      offFrame();
+      offCards();
+      offConnection();
+    };
+  }, []);
+
+  // Re-attempts the connection whenever the backend connection settings
+  // themselves change - the common first-run case is: launch the app
+  // (no VM URL set yet, so the effect above's connect() attempt fails
+  // immediately with "no backend URL configured" and gives up), THEN go
+  // to Settings > Server Connection and actually type one in. Without
+  // this, nothing would ever retry until the next full app restart even
+  // though the person just fixed the exact thing that was missing.
+  // connect() itself already no-ops safely if a connection is already
+  // open/connecting, so this is safe to fire on every preferences
+  // change, not just the first one.
+  useEffect(() => {
+    if (preferences?.backend_vm_url) {
+      streamRef.current.connect();
+    }
+  }, [preferences?.backend_vm_url, preferences?.backend_auth_token]);
+
+  const handleNewChat = async () => {
+    setSidebarVisible(false);
+    setScreen('chat');
+    await startNewConversation();
+  };
+
+  const handleSelectConversation = async (id) => {
+    setSidebarVisible(false);
+    setScreen('chat');
+    await loadConversation(id);
+  };
+
+  const handleOpenSettings = () => {
+    setSidebarVisible(false);
+    setScreen('settings');
+  };
+
+  // Opens PlanScreen.js at a given plan id - called from ChatScreen.js's
+  // "View Plan" chip (a reply produced by the hierarchical planning
+  // system, see src/services/brain/backendBrain.js) or from a resumable
+  // plan surfaced at launch (planStore.js's loadActivePlansOnLaunch).
+  const handleOpenPlan = (planId) => {
+    setActivePlanId(planId);
+    setScreen('plan');
+  };
+
+  const handleClosePlan = () => {
+    setScreen('chat');
+  };
+
+  const handleCancelPlan = (planId) => {
+    usePlanStore.getState().cancelPlan(planId);
+  };
+
+  // The chat header's desktop icon and the inline BrowserCard's Expand /
+  // Take over all open the same BrowserFullscreen over the ONE App-owned
+  // stream (no new socket). With a live session it shows that session;
+  // with none it shows the idle "connected, waiting for a task" view and
+  // a task field - starting a task there adds the BrowserCard to the chat
+  // via browserCardStore, like any other browser task.
+  const [browserTakeover, setBrowserTakeover] = useState(false); // open fullscreen straight into manual control (card's Take over)
+  const handleOpenBrowser = () => { setBrowserTakeover(false); setScreen('browser'); };
+  const handleTakeOverBrowser = () => { setBrowserTakeover(true); setScreen('browser'); };
+  const handleCloseBrowser = () => { setBrowserTakeover(false); setScreen('chat'); };
+
+  const handleDeleteConversation = (conversation) => {
+    Alert.alert(
+      'Delete conversation?',
+      `"${conversation.title || 'New Conversation'}" will be permanently deleted.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteConversation(conversation.id),
+        },
+      ]
+    );
+  };
+
+  if (!dbReady) {
+    return (
+      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.textPrimary} />
+        <Text style={[styles.loadingText, { color: theme.textTertiary }]}>Starting ZAO…</Text>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <>
+      <StatusBar barStyle={theme.statusBarStyle} backgroundColor={theme.background} />
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.ambientBase }]} edges={['top']}>
+        <AmbientBackground theme={theme} />
+        {dbError && (
+          <View style={[styles.dbErrorBanner, { backgroundColor: '#FEF3C7' }]}>
+            <Text style={styles.dbErrorText}>
+              Local storage had trouble starting. Some features may not save properly.
+            </Text>
+          </View>
+        )}
+        {/* Resume banner - only ever shown on the chat screen, and only
+            for plans loadActivePlansOnLaunch() found still in a
+            non-terminal state from a previous app session. Tapping opens
+            PlanScreen at that plan; the X dismisses just this banner for
+            the rest of the session (see planStore.js's
+            dismissResumablePlan - doesn't touch the plan's own status,
+            so it's still reachable later from Plan History). */}
+        {/* Plans genuinely awaiting a human decision (awaiting_approval /
+            paused) still show the tap-to-open banner above. Plans merely
+            'running' when the app closed don't need a decision, so
+            loadActivePlansOnLaunch() (planStore.js) resumes them
+            automatically instead - this is just a visible "here's what's
+            happening" indicator for that, not a control. */}
+        {screen === 'chat' && autoResumingPlanIds.length > 0 && (
+          <View style={[styles.resumeBanner, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+            <View style={styles.resumeBannerContent}>
+              <Text style={[styles.resumeBannerTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+                Resuming {autoResumingPlanIds.length > 1 ? `${autoResumingPlanIds.length} plans` : 'a plan'} from before the app closed…
+              </Text>
+              <Text style={[styles.resumeBannerSubtitle, { color: theme.textTertiary }]}>
+                It'll pause automatically if it hits anything needing your approval.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {screen === 'chat' && resumablePlans.length > 0 && (
+          <View style={[styles.resumeBanner, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+            <TouchableOpacity
+              style={styles.resumeBannerContent}
+              onPress={() => handleOpenPlan(resumablePlans[0].id)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.resumeBannerTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+                Resume plan: {resumablePlans[0].goal || 'Untitled plan'}
+              </Text>
+              <Text style={[styles.resumeBannerSubtitle, { color: theme.textTertiary }]}>
+                {resumablePlans.length > 1
+                  ? `Left ${resumablePlans[0].status} - ${resumablePlans.length - 1} more waiting`
+                  : `Left ${resumablePlans[0].status} when the app last closed`}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.resumeBannerDismiss}
+              onPress={() => dismissResumablePlan(resumablePlans[0].id)}
+            >
+              <Text style={[styles.resumeBannerDismissText, { color: theme.textTertiary }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={styles.screenContainer}>
+          {screen === 'chat' && (
+            <ChatScreen
+              onOpenSidebar={() => setSidebarVisible(true)}
+              onOpenBrowser={handleOpenBrowser}
+              onTakeOverBrowser={handleTakeOverBrowser}
+              browserStream={streamRef.current}
+              onOpenPlan={handleOpenPlan}
+              onNewChat={handleNewChat}
+              activeMode="chat"
+              browserAgentActive={isAgentRunning || awaitingHuman}
+              userName={(usePreferencesStore.getState().preferences?.display_name
+                || usePreferencesStore.getState().preferences?.user_name
+                || '').split(' ')[0] || undefined}
+            />
+          )}
+          {screen === 'settings' && (
+            <SettingsScreen onOpenSidebar={() => setSidebarVisible(true)} onGoChat={() => setScreen('chat')} />
+          )}
+          {screen === 'plan' && (
+            <PlanScreen
+              planId={activePlanId}
+              onClose={handleClosePlan}
+              onOpenPlan={handleOpenPlan}
+              onOpenBrowser={handleOpenBrowser}
+              browserFrame={frameBase64}
+              onApproveStep={(step, stepPlanId) => approvePlanStep(step, stepPlanId || activePlanId)}
+              onRejectStep={(step, stepPlanId) => rejectPlanStep(step, stepPlanId || activePlanId)}
+              onCancelPlan={handleCancelPlan}
+              onAcceptCheckpoint={(checkpointPlanId) => acceptPlanCheckpoint(checkpointPlanId)}
+              onDismissCheckpoint={(checkpointPlanId) => dismissPlanCheckpoint(checkpointPlanId)}
+              onStartPlan={(planId) => startPlanAction(planId)}
+            />
+          )}
+        </View>
+      </SafeAreaView>
+
+      {/* Browser fullscreen (expanded BrowserCard). Drawn outside
+          SafeAreaView so it covers the whole screen; the WebSocket lives in
+          streamRef and stays open whether or not this is shown. */}
+      <BrowserFullscreen
+        visible={screen === 'browser'}
+        theme={theme}
+        stream={streamRef.current}
+        isRunning={isAgentRunning}
+        awaitingHuman={awaitingHuman}
+        humanReason={humanReason}
+        frameBase64={frameBase64}
+        connected={streamConnected}
+        connectionError={streamConnectionError}
+        tabs={browserTabs}
+        zoom={browserFullScreenZoom}
+        startInTakeover={browserTakeover}
+        onClose={handleCloseBrowser}
+      />
+
+      <SidebarDrawer
+        visible={sidebarVisible}
+        onClose={() => setSidebarVisible(false)}
+        conversations={conversations}
+        activeConversationId={conversationId}
+        onSelectConversation={handleSelectConversation}
+        onNewChat={handleNewChat}
+        onOpenSettings={handleOpenSettings}
+        onDeleteConversation={handleDeleteConversation}
+      />
+
+      <SharedPluginInstallSheet
+        visible={!!pendingShareToken}
+        token={pendingShareToken}
+        theme={theme}
+        onClose={() => setPendingShareToken(null)}
+        onInstalled={() => setPendingShareToken(null)}
+      />
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <AppShell />
+      </SafeAreaProvider>
+    </ErrorBoundary>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+  },
+  screenContainer: {
+    flex: 1,
+  },
+  dbErrorBanner: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+  },
+  dbErrorText: {
+    fontSize: 12,
+    color: '#92400E',
+    textAlign: 'center',
+  },
+  resumeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 12,
+    marginTop: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  resumeBannerContent: {
+    flex: 1,
+  },
+  resumeBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  resumeBannerSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  resumeBannerDismiss: {
+    paddingLeft: 12,
+    paddingVertical: 4,
+  },
+  resumeBannerDismissText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
