@@ -34,7 +34,6 @@ import {
   clearAllMemories,
   getRecentCheckpoints,
 } from '../db/database';
-import { ACTIVE_MODEL } from '../config/localModels';
 import {
   getWeeklyUsage,
   getSubscription,
@@ -471,7 +470,7 @@ function VmConnectionSection({ preferences, theme }) {
     if (result.reachable) {
       await setBackendVmUrl(url);
       setUrlValue(url);
-      Alert.alert('Connected', result.ready ? `Reached the VM · ${result.model || ACTIVE_MODEL.label} is ready.` : 'Reached the VM - the model is still loading.');
+      Alert.alert('Connected', result.ready ? 'Reached the VM · ZAO is ready.' : 'Reached the VM - ZAO is still loading.');
     } else {
       Alert.alert('Connection failed', result.error || "Couldn't reach that address. Check the IP/port and that the server is running.");
     }
@@ -483,9 +482,9 @@ function VmConnectionSection({ preferences, theme }) {
   const pillLabel = !checked
     ? 'Not checked'
     : status.ready
-    ? `Reachable · ${status.model || ACTIVE_MODEL.label}`
+    ? 'Reachable · ready'
     : status.reachable
-    ? 'Reachable · model loading'
+    ? 'Reachable · loading'
     : 'Not reachable';
 
   return (
@@ -586,7 +585,7 @@ function ModelApiKeySection({ preferences, theme }) {
     const result = await runCheck(token);
     if (result.reachable && result.authValid) {
       await setBackendAuthToken(token);
-      Alert.alert('Connected', `API key verified against ${result.model || ACTIVE_MODEL.label}.`);
+      Alert.alert('Connected', 'API key verified.');
     } else if (result.reachable && result.authValid === false) {
       Alert.alert('Invalid key', "That key doesn't match AUTH_TOKEN on the VM. Double-check server/config.js.");
     } else {
@@ -755,7 +754,7 @@ function OpenRouterApiKeySection({ preferences, theme }) {
       </View>
 
       <Text style={[styles.helperText, { color: theme.textSecondary, marginTop: 8 }]}>
-        Your own key from openrouter.ai/keys. This is what the VM uses to reach {ACTIVE_MODEL.label} - chat, coding, vision, and video understanding all run through it.
+        Your own key from openrouter.ai/keys. This is what the VM uses to reach ZAO's model - chat, coding, vision, and video understanding all run through it.
       </Text>
       <TextInput
         style={[styles.keyInput, { borderColor: theme.borderStrong, color: theme.textPrimary, marginTop: 8 }]}
@@ -822,9 +821,9 @@ function BackendConnectionSection({ preferences, theme }) {
       <OpenRouterApiKeySection preferences={preferences} theme={theme} />
       <Text style={[styles.helperText, { color: theme.textSecondary, marginTop: 12 }]}>
         {status.ready
-          ? `Chat, coding, reasoning, and the Terminal tool are all running on ${status.model || ACTIVE_MODEL.label} and bash/Python on the VM.`
+          ? 'Chat, coding, reasoning, and the Terminal tool are all running on ZAO and bash/Python on the VM.'
           : status.connected
-          ? 'The VM is reachable but the model is still loading - this can take a bit longer on first start.'
+          ? 'The VM is reachable but ZAO is still loading - this can take a bit longer on first start.'
           : "ZAO couldn't reach the VM with these settings. Make sure the server is running on the VM and the IP/key above are correct."}
       </Text>
     </View>

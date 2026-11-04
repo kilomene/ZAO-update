@@ -132,12 +132,12 @@ export const ZAO_BRAIN_PROFILE = Object.freeze({
   [BRAIN_ARCHITECTURES.DENSE_TRANSFORMER]: {
     implemented: false,
     where: null,
-    reason: 'Unknown - Ox Alpha (src/config/localModels.js) is an anonymous stealth-preview model on OpenRouter; its architecture isn\'t published. Not ruled out.',
+    reason: 'Unknown - ZAO\'s model (src/config/localModels.js) is an anonymous stealth-preview model; its architecture isn\'t published. Not ruled out.',
   },
   [BRAIN_ARCHITECTURES.MIXTURE_OF_EXPERTS]: {
     implemented: false,
     where: null,
-    reason: 'Unknown, same as DENSE_TRANSFORMER above - Ox Alpha\'s architecture isn\'t disclosed. If it does turn out to be MoE, the routing would happen entirely inside the model\'s own weights either way - ZAO\'s code never touches it directly.',
+    reason: 'Unknown, same as DENSE_TRANSFORMER above - ZAO\'s model\'s architecture isn\'t disclosed. If it does turn out to be MoE, the routing would happen entirely inside the model\'s own weights either way - ZAO\'s code never touches it directly.',
   },
   [BRAIN_ARCHITECTURES.MULTI_BRAIN_ENSEMBLE]: {
     implemented: true,

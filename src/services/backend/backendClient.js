@@ -496,7 +496,7 @@ function sendMessageStreamingAttempt(baseUrl, token, body, onToken, attempt) {
             });
             return;
           }
-          resolve({ success: false, data: null, error: { type: ERROR_TYPES.INFERENCE_ERROR, message: 'OpenRouter is rate-limiting Ox Alpha right now (HTTP 429) - this is common on the free/stealth preview tier under real usage. Try again in a moment, or check your rate-limit tier at openrouter.ai/keys.' } });
+          resolve({ success: false, data: null, error: { type: ERROR_TYPES.INFERENCE_ERROR, message: 'ZAO is being rate-limited right now (HTTP 429) - this is common on the current preview tier under real usage. Try again in a moment, or check your rate-limit tier at openrouter.ai/keys.' } });
           return;
         }
         console.error('[BackendClient] sendMessage (streaming) failed:', err);

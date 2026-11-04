@@ -37,7 +37,7 @@ import ImageViewerModal from '../components/ImageViewerModal';
 import ClockWidget from '../components/ClockWidget';
 import FileArtifactCard from '../components/FileArtifactCard';
 import SentAttachmentCard from '../components/SentAttachmentCard';
-import { ACTIVE_MODEL } from '../config/localModels';
+import { deriveActivity } from '../ui/avatarActivity';
 import { useTheme } from '../theme/useTheme';
 import { REASONING_STRATEGY_LABELS, REASONING_STRATEGY_GLYPHS } from '../services/reasoning/reasoningTypes';
 
@@ -324,11 +324,6 @@ function MessageBubble({ message, theme, onLongPress, onImagePress, actionsProps
             </View>
           ) : null}
           <View style={styles.bubbleFooter}>
-            {!isUser && message.model_family && !message.is_error && (
-              <Text style={[styles.modelTag, { color: theme.textTertiary }]}>
-                {ACTIVE_MODEL.label}
-              </Text>
-            )}
             {isUser && message.edited_at && (
               <Text style={[styles.editedTag, { color: theme.bubbleUserText }]}>
                 Edited
@@ -427,46 +422,11 @@ function getGreeting() {
 }
 
 /**
- * Turns one raw AgentStep (from the Browser Router backend - see
- * browser-router/app/agent.py's AgentStep) into a short, friendly label
- * for the live typing-indicator area, e.g. "Searching..." or "Opening
- * github.com...". Falls back to a generic label for step kinds/tool names
- * this hasn't been taught a friendly phrasing for, rather than showing the
- * raw backend detail string (which is deliberately verbose/technical -
- * useful for debugging, not for a live progress UI).
+ * formatBrowsingStepLabel (raw browser step -> short friendly label)
+ * now lives in src/ui/avatarActivity.js, shared with the header status
+ * line and the animated avatar so every surface phrases the current
+ * browsing action identically.
  */
-function formatBrowsingStepLabel(stepInfo) {
-  if (!stepInfo?.action) return 'Browsing…';
-  const { action } = stepInfo;
-
-  switch (action.action) {
-    case 'navigate': {
-      try {
-        return `Opening ${new URL(action.url).hostname.replace('www.', '')}…`;
-      } catch (e) {
-        return 'Opening page…';
-      }
-    }
-    case 'click': return 'Clicking…';
-    case 'fill': return 'Typing…';
-    case 'selectOption': return 'Selecting an option…';
-    case 'setChecked': return 'Toggling a checkbox…';
-    case 'submitForm': return 'Submitting…';
-    case 'scrollTo': return 'Scrolling…';
-    case 'waitForSelector': return 'Waiting for the page…';
-    case 'extractPageText': return 'Reading the page…';
-    case 'extractTables': return 'Reading a table…';
-    case 'newTab': return 'Opening a new tab…';
-    case 'switchTab': return 'Switching tabs…';
-    case 'closeTab': return 'Closing a tab…';
-    case 'goBack': return 'Going back…';
-    case 'download': return 'Downloading a file…';
-    case 'needsHuman': return 'Needs your input…';
-    case 'finish': return 'Wrapping up…';
-    default: return 'Browsing…';
-  }
-}
-
 export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, onTakeOverBrowser, browserStream = null, onNewChat, browserAgentActive = false, userName = '', activeMode = 'chat' }) {
   const theme = useTheme();
   // Inline browser cards (browserCardStore, fed by App's one BrowserAgentStream).
@@ -726,18 +686,17 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, o
     }
   };
 
-  // Muse-style gray status line under the header name while ZAO is working.
-  const headerStatus = !isSending
-    ? null
-    : streamingText
-      ? 'Writing…'
-      : planSteps.length > 0
-        ? `Running plan · step ${planSteps.length}`
-        : planProgress
-          ? 'Planning…'
-          : browsingSteps.length > 0
-            ? 'Browsing…'
-            : 'Thinking…';
+  // Live activity: the EXACT current action (latest plan step / plan
+  // stage / browsing step), shortened for the small one-line status
+  // slot - never a generic "Working…" while a real action is known.
+  // The full process detail stays in the Plan tab/screen; this is only
+  // its short live feed. One derivation feeds the header status line,
+  // the typing indicator and the avatar's animation kind, so all three
+  // surfaces always agree. See src/ui/avatarActivity.js.
+  const activity = deriveActivity({
+    isSending, streamingText, streamingThinking, planProgress, planSteps, browsingSteps,
+  });
+  const headerStatus = activity.label;
 
   return (
     <KeyboardAvoidingView
@@ -745,21 +704,27 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, o
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={90}
     >
-      {/* v2 header: Grok Bot 44pt white circles + avatar/name pill, merged with
-          Muse's centered avatar and gray working-status line. */}
-      <View style={[styles.header, { backgroundColor: 'transparent', minHeight: headerStatus ? 74 : 56 }]}>
+      {/* Header identity (Grok's mockup, finished): a LARGE animated
+          plush avatar centered at the top, overlapping a rounded card
+          that carries "ZAO" and the live action line directly under it
+          (e.g. "Editing App.js" - see deriveActivity above). The whole
+          block sits tight to the top; the side CircleButtons keep their
+          own row above the card's shoulders. */}
+      <View style={[styles.header, { backgroundColor: 'transparent', minHeight: headerStatus ? 138 : 120 }]}>
         <CircleButton theme={theme} icon="menu-outline" label="Open menu" onPress={onOpenSidebar} />
         <View style={styles.headerCenter} pointerEvents="none">
-          <View style={[styles.identityPill, glassSurface(theme, 22)]}>
-            <GlassFill theme={theme} radius={22} strong />
-            <ZaoAvatar size={28} />
+          <View style={[styles.identityCard, glassSurface(theme, 24)]}>
+            <GlassFill theme={theme} radius={24} strong />
+            <View style={styles.identityAvatarSlot}>
+              <ZaoAvatar size={80} activity={activity.kind} />
+            </View>
             <Text style={[styles.identityName, { color: theme.textPrimary }]}>ZAO</Text>
+            {!!headerStatus && (
+              <Text style={[styles.identityStatus, { color: theme.textSecondary }]} numberOfLines={1}>
+                {headerStatus}
+              </Text>
+            )}
           </View>
-          {!!headerStatus && (
-            <Text style={[styles.identityStatus, { color: theme.textSecondary }]} numberOfLines={1}>
-              {headerStatus}
-            </Text>
-          )}
         </View>
         <View style={styles.headerRight}>
           <CircleButton
@@ -916,39 +881,22 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, o
                 {streamingThinking.length > 220 ? `…${streamingThinking.slice(-220)}` : streamingThinking}
               </Text>
             </View>
-          ) : planSteps.length > 0 || planProgress ? (
-            // Live hierarchical-plan progress - a real checklist instead
-            // of a bare spinner while a plan builds (planProgress) or runs
-            // (planSteps). Previously onPlanProgress/onPlanStep were wired
-            // through orchestrator.js with no handler on the chatStore end,
-            // so this branch never had anything to show - see
-            // SYSTEM_COMPONENTS.md's state-management section.
-            <View style={styles.browsingProgress}>
-              <ActivityIndicator size="small" color={theme.textTertiary} />
-              <Text
-                style={[styles.typingText, { color: theme.textTertiary }]}
-                numberOfLines={1}
-              >
-                {planSteps.length > 0
-                  ? `✓ ${planSteps.length} step${planSteps.length === 1 ? '' : 's'} · ${planSteps[planSteps.length - 1]}`
-                  : planProgress}
-              </Text>
-            </View>
-          ) : browsingSteps.length > 0 ? (
-            <View style={styles.browsingProgress}>
-              <ActivityIndicator size="small" color={theme.textTertiary} />
-              <Text
-                style={[styles.typingText, { color: theme.textTertiary }]}
-                numberOfLines={1}
-              >
-                {formatBrowsingStepLabel(browsingSteps[browsingSteps.length - 1])}
-              </Text>
-            </View>
           ) : (
-            <>
+            // The same derived live activity the header streams (latest
+            // plan step / plan stage / browsing step, shortened) - the
+            // two surfaces can never disagree, and the fallback here is
+            // deriveActivity's own "Thinking" for the brief moment
+            // before any specific action exists. Full plan detail stays
+            // in the Plan tab/screen.
+            <View style={styles.browsingProgress}>
               <ActivityIndicator size="small" color={theme.textTertiary} />
-              <Text style={[styles.typingText, { color: theme.textTertiary }]}>Thinking…</Text>
-            </>
+              <Text
+                style={[styles.typingText, { color: theme.textTertiary }]}
+                numberOfLines={1}
+              >
+                {activity.label}
+              </Text>
+            </View>
           )}
         </View>
       )}
@@ -1191,42 +1139,57 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 6,
-    paddingBottom: 4,
-    minHeight: 56,
+    paddingTop: 2,
+    paddingBottom: 2,
+    // The identity block is absolutely centered (headerCenter), so the
+    // header must reserve its full height itself: card top offset (34)
+    // + card content (~98 with the status line, ~80 without) + a small
+    // gap before the Chat/Plan tabs. The inline minHeight on the header
+    // View picks between the two cases.
+    minHeight: 120,
   },
   headerCenter: {
     position: 'absolute',
     left: 0,
     right: 0,
-    top: 6,
+    top: 2,
     alignItems: 'center',
   },
   headerRight: {
     flexDirection: 'row',
     gap: 10,
   },
-  identityPill: {
-    flexDirection: 'row',
+  // Rounded name/status card from the mockups; the avatar overlaps its
+  // top edge (see identityAvatarSlot's negative margin) and the card
+  // itself must NOT clip it - glassSurface sets overflow:'hidden', so
+  // identityCard deliberately re-opens it and GlassFill's own rounded
+  // layer keeps the fill clipped instead.
+  identityCard: {
     alignItems: 'center',
-    height: 44,
-    paddingLeft: 8,
-    paddingRight: 16,
-    borderRadius: 22,
-    gap: 8,
+    marginTop: 32,
+    minWidth: 168,
+    maxWidth: 264,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+    borderRadius: 24,
+    overflow: 'visible',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 10,
     elevation: 2,
   },
+  identityAvatarSlot: {
+    marginTop: -34,
+    marginBottom: 2,
+  },
   identityName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
     letterSpacing: -0.3,
   },
   identityStatus: {
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 13,
+    marginTop: 2,
   },
   modeTabsRow: {
     alignItems: 'center',
@@ -1381,7 +1344,6 @@ const styles = StyleSheet.create({
   bubbleFooter: {
     flexDirection: 'row',
   },
-  modelTag: { fontSize: 11, fontWeight: '500', letterSpacing: 0.2, opacity: 0.55, marginTop: 4 },
   editedTag: {
     fontSize: 11,
     marginTop: 4,
