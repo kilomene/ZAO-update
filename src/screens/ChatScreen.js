@@ -705,25 +705,33 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, o
       keyboardVerticalOffset={90}
     >
       {/* Header identity (Grok's mockup, finished): a LARGE animated
-          plush avatar centered at the top, overlapping a rounded card
-          that carries "ZAO" and the live action line directly under it
-          (e.g. "Editing App.js" - see deriveActivity above). The whole
-          block sits tight to the top; the side CircleButtons keep their
-          own row above the card's shoulders. */}
-      <View style={[styles.header, { backgroundColor: 'transparent', minHeight: headerStatus ? 138 : 120 }]}>
+          plush avatar centered at the top, FULLY visible, resting over
+          the top edge of a rounded card that carries "ZAO" and the live
+          action line directly under it (e.g. "Editing App.js" - see
+          deriveActivity above). The avatar is an absolutely-positioned
+          sibling ON TOP of the card, never a child of it: the card's
+          glassSurface clips its own fill with overflow:'hidden', and
+          when the avatar lived inside it (pulled up by a negative
+          margin) everything above the card's edge was cut off - on a
+          real device only a squished slice of the avatar showed. The
+          whole block sits tight to the top; the side CircleButtons
+          keep their own row above the card's shoulders. */}
+      <View style={[styles.header, { backgroundColor: 'transparent', minHeight: headerStatus ? 144 : 124 }]}>
         <CircleButton theme={theme} icon="menu-outline" label="Open menu" onPress={onOpenSidebar} />
         <View style={styles.headerCenter} pointerEvents="none">
-          <View style={[styles.identityCard, glassSurface(theme, 24)]}>
-            <GlassFill theme={theme} radius={24} strong />
-            <View style={styles.identityAvatarSlot}>
+          <View style={styles.identityBlock}>
+            <View style={[styles.identityCard, glassSurface(theme, 24)]}>
+              <GlassFill theme={theme} radius={24} strong />
+              <Text style={[styles.identityName, { color: theme.textPrimary }]}>ZAO</Text>
+              {!!headerStatus && (
+                <Text style={[styles.identityStatus, { color: theme.textSecondary }]} numberOfLines={1}>
+                  {headerStatus}
+                </Text>
+              )}
+            </View>
+            <View style={styles.identityAvatarOverlay}>
               <ZaoAvatar size={80} activity={activity.kind} />
             </View>
-            <Text style={[styles.identityName, { color: theme.textPrimary }]}>ZAO</Text>
-            {!!headerStatus && (
-              <Text style={[styles.identityStatus, { color: theme.textSecondary }]} numberOfLines={1}>
-                {headerStatus}
-              </Text>
-            )}
           </View>
         </View>
         <View style={styles.headerRight}>
@@ -1142,11 +1150,12 @@ const styles = StyleSheet.create({
     paddingTop: 2,
     paddingBottom: 2,
     // The identity block is absolutely centered (headerCenter), so the
-    // header must reserve its full height itself: card top offset (34)
-    // + card content (~98 with the status line, ~80 without) + a small
-    // gap before the Chat/Plan tabs. The inline minHeight on the header
-    // View picks between the two cases.
-    minHeight: 120,
+    // header must reserve its full height itself: card top offset (62,
+    // which leaves the 80px avatar fully visible above the card with a
+    // slight 18px rest-over) + card content (~76 with the status line,
+    // ~57 without) + a small gap before the Chat/Plan tabs. The inline
+    // minHeight on the header View picks between the two cases.
+    minHeight: 124,
   },
   headerCenter: {
     position: 'absolute',
@@ -1159,28 +1168,44 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
   },
-  // Rounded name/status card from the mockups; the avatar overlaps its
-  // top edge (see identityAvatarSlot's negative margin) and the card
-  // itself must NOT clip it - glassSurface sets overflow:'hidden', so
-  // identityCard deliberately re-opens it and GlassFill's own rounded
-  // layer keeps the fill clipped instead.
+  // Wrapper for the card + avatar overlay. It clips nothing
+  // (overflow stays at the Yoga default, visible) so the avatar -
+  // including its activity props, which extend past the avatar's own
+  // box - always shows in full.
+  identityBlock: {
+    position: 'relative',
+    alignItems: 'center',
+  },
+  // Rounded name/status card from the mockups. glassSurface's
+  // overflow:'hidden' is correct HERE - it only clips the card's own
+  // fill (GlassFill) - because the avatar is no longer inside this
+  // card. marginTop leaves room for the fully-visible avatar above;
+  // paddingTop clears the avatar's resting overlap so "ZAO" never
+  // touches it.
   identityCard: {
     alignItems: 'center',
-    marginTop: 32,
+    marginTop: 62,
     minWidth: 168,
     maxWidth: 264,
     paddingHorizontal: 20,
+    paddingTop: 26,
     paddingBottom: 10,
     borderRadius: 24,
-    overflow: 'visible',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 10,
     elevation: 2,
   },
-  identityAvatarSlot: {
-    marginTop: -34,
-    marginBottom: 2,
+  // The avatar floats on top of the block: a full-width centering
+  // strip pinned to the top, avatar rendered after (above) the card.
+  identityAvatarOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 2,
+    elevation: 4,
   },
   identityName: {
     fontSize: 17,
